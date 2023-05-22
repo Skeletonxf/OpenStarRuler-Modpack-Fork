@@ -1,3 +1,4 @@
+import cargo;
 import elements.GuiContextMenu;
 import tabs.Tab;
 from tabs.tabbar import ActiveTab;
@@ -10,6 +11,10 @@ import abilities;
 import util.icon_view;
 import systems;
 import constructions;
+
+from statuses import getStatusID;
+from abilities import getAbilityType;
+import orders;
 
 import dialogs.MessageDialog;
 import dialogs.QuestionDialog;
@@ -30,7 +35,7 @@ bool playedSound = false;
 void playOptionSound(const SoundSource@ sound) {
 	if(sound is null || playedSound)
 		return;
-	
+
 	playedSound = true;
 	sound.play(priority=true);
 }
@@ -322,7 +327,7 @@ class ScuttleOrbital : Option, QuestionDialogCallback {
 		if(answer == QA_Yes)
 			cast<Orbital>(clicked).scuttle();
 	}
-	
+
 	void call() {
 		question(
 			locale::SCUTTLE,
@@ -337,7 +342,7 @@ class ScuttleFlagship : Option, QuestionDialogCallback {
 		if(answer == QA_Yes)
 			cast<Ship>(clicked).scuttle();
 	}
-	
+
 	void call() {
 		question(
 			locale::SCUTTLE,
@@ -509,6 +514,23 @@ class SetDefending : Option {
 	}
 };
 
+class SetLooping: Option {
+	Object@ obj;
+	bool loop;
+	SetLooping(Object@ obj, bool value) {
+		@this.obj = obj;
+		this.loop = value;
+	}
+
+	void call() {
+		if(obj is null || !obj.hasLeaderAI || !obj.owner.controlled) {
+			return;
+		}
+		//obj.setLooping(loop);
+		// TODO obj.addLoopOrder(shiftKey, loop);
+	}
+}
+
 class ExportResource : Option {
 	Object@ from;
 	Object@ to;
@@ -545,7 +567,7 @@ class ExportResource : Option {
 };
 
 class ExportAnyResource : SelectionOption {
-	void call(Object@ selected) {	
+	void call(Object@ selected) {
 		if(selected.isPlanet) {
 			if(selected !is clicked) {
 				selected.exportResource(0, clicked);
@@ -710,12 +732,18 @@ class Abandon : SingleSelectionOption, QuestionDialogCallback {
 
 class TriggerAbility : SingleSelectionOption {
 	int id;
-	TriggerAbility(int ID) {
+	bool asOrder = false;
+	TriggerAbility(int ID, bool asOrder = false) {
 		id = ID;
+		this.asOrder = asOrder;
 	}
 
 	void call(Object@ selected) {
-		selected.activateAbility(id);
+		if (asOrder) {
+			selected.addAbilityOrder(id, null, shiftKey);
+		} else {
+			selected.activateAbility(id);
+		}
 		playOptionSound(sound::order_attack);
 	}
 };
@@ -758,6 +786,110 @@ class TargetAbility : MultiOption {
 		MultiOption::draw(ele, flags, absPos);
 	}
 };
+
+enum CargoTransfer {
+	CT_Pickup,
+	CT_Dropoff
+};
+
+class TransferCargo : SelectionOption {
+	const CargoType@ type;
+	CargoTransfer transfer;
+
+	TransferCargo(const CargoType@ type, CargoTransfer transfer) {
+		@this.type = type;
+		this.transfer = transfer;
+	}
+
+	void call(Object@ obj) {
+		if(obj is null || !obj.hasCargo || !obj.hasLeaderAI || !obj.owner.controlled) {
+			return;
+		}
+		// null cargo type is interpreted as transfer all cargo types
+		if (type is null) {
+			if (transfer == CT_Pickup) {
+				// TODO obj.addCargoOrder(clicked, -1, 0.0, true, shiftKey);
+			} else if (transfer == CT_Dropoff) {
+				// TODO obj.addCargoOrder(clicked, -1, 0.0, false, shiftKey);
+			}
+		} else {
+			if (transfer == CT_Pickup) {
+				// TODO obj.addCargoOrder(clicked, type.id, 0.0, true, shiftKey);
+			} else if (transfer == CT_Dropoff) {
+				// TODO obj.addCargoOrder(clicked, type.id, 0.0, false, shiftKey);
+			}
+		}
+	}
+}
+
+class FixedQuantityTransferCargo : SelectionOption, IInputDialogCallback {
+	const CargoType@ type;
+	CargoTransfer transfer;
+	Object@ obj;
+	bool shiftKeyMemory = shiftKey;
+
+	FixedQuantityTransferCargo(const CargoType@ type, CargoTransfer transfer) {
+		@this.type = type;
+		this.transfer = transfer;
+	}
+
+	void call(Object@ obj) {
+		if (obj is null || !obj.hasCargo || !obj.hasLeaderAI || !obj.owner.controlled) {
+			return;
+		}
+		// Enqueue the order if the user is shifting when they add this to the orders,
+		// don't require them to hold shift until they confirm the quantity
+		shiftKeyMemory = shiftKey;
+		@this.obj = obj;
+		double maxCapacity = obj.cargoCapacity;
+		InputDialog@ dialog = InputDialog(this, null);
+		dialog.addTitle(locale::CARGO_QUANTITY);
+		dialog.accept.text = locale::SET_CARGO_QUANTIY;
+		dialog.addSpinboxInput(locale::INPUT_CARGO_QUANTITY, defaultValue=min(1000.0, maxCapacity),
+			minValue=0.0, maxValue=maxCapacity, decimals=0, step=1000.0);
+		dialog.addLabel("", FT_Medium, 0.5, true);
+		addDialog(dialog);
+		changeCallback(dialog);
+	}
+
+	void changeCallback(InputDialog@ dialog) {
+		double quantity = dialog.getSpinboxInput(0);
+		double maxCapacity = obj.cargoCapacity;
+
+		dialog.accept.disabled = quantity > maxCapacity || quantity <= 0.0;
+		dialog.setLabel(1, string(quantity) + "/ " + string(maxCapacity));
+	}
+
+	void inputCallback(InputDialog@ dialog, bool accepted) {
+		if (accepted) {
+			double quantity = dialog.getSpinboxInput(0);
+
+			// null cargo type is interpreted as transfer all cargo types
+			if (type is null) {
+				if (transfer == CT_Pickup) {
+					// TODO obj.addCargoOrder(clicked, -1, quantity, true, shiftKeyMemory);
+				} else if (transfer == CT_Dropoff) {
+					// TODO obj.addCargoOrder(clicked, -1, quantity, false, shiftKeyMemory);
+				}
+			} else {
+				if (transfer == CT_Pickup) {
+					// TODO obj.addCargoOrder(clicked, type.id, quantity, true, shiftKeyMemory);
+				} else if (transfer == CT_Dropoff) {
+					// TODO obj.addCargoOrder(clicked, type.id, quantity, false, shiftKeyMemory);
+				}
+			}
+		}
+	}
+}
+
+class AutoMine : SelectionOption {
+	void call(Object@ obj) {
+		if(obj is null || !obj.hasCargo || !obj.hasLeaderAI || !obj.owner.controlled) {
+			return;
+		}
+		// TODO obj.addAutoMineOrder(clicked, shiftKey);
+	}
+}
 
 class Chase : SelectionOption {
 	void call(Object@ obj) {
@@ -839,7 +971,7 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 	//sub.addOption("A");
 	//sub.addOption("B");
 	//sub.addOption("C");
-	
+
 	if(selected !is null && selOwner is playerEmpire && selected.hasLeaderAI && selected.isShip) {
 		if(clicked.isAnomaly && cast<Anomaly>(clicked).progress < 1.f)
 			addOption(menu, selected, clicked, locale::SCAN_ANOMALY, ScanAnomaly(), icons::Anomaly);
@@ -852,7 +984,7 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 	if(selected !is null && selected.hasResources && clicked.hasResources) {
 		if(selectedObjects.length > 1)
 			addOption(menu, selected, clicked, format(locale::EXPORT_RESOURCES, clicked.name), ExportAnyResource());
-		
+
 		//Exports
 		uint cnt = selected.nativeResourceCount;
 		if(clicked is selected) {
@@ -866,9 +998,9 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 						continue;
 					if(selected.nativeResourceLocked[i])
 						continue;
-					
+
 					string text;
-					
+
 					if(selected.nativeResourceUsable[i] && dest.owner is playerEmpire)
 						text = format(locale::STOP_EXPORT_RESOURCE, type.name, dest.name);
 					else
@@ -984,7 +1116,7 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 	if(clicked.isPlanet && playerEmpire.NoAutoColonize == 0) {
 		bool quarantined = clicked.quarantined;
 		bool addedColonyOptions = false;
-		
+
 		if(selected !is null && selected.owner is playerEmpire && selected.isPlanet
 				&& selected !is clicked && selected.maxPopulation > 1) {
 			//Colonization from selected planet
@@ -992,7 +1124,7 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 				if(clickedOwner is null || !clickedOwner.valid) {
 					if(!quarantined) {
 						addedColonyOptions = true;
-						
+
 						//TODO: Take slipstream & gate into account
 						double eta = 1.0;
 						eta += newtonArrivalTime(selected.colonyShipAccel, clicked.position - selected.position, vec3d()) / 60.0;
@@ -1000,14 +1132,14 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 							eta += double(selected.colonyOrderCount);
 						if(selected.owner.HasFlux != 0)
 							eta = 0;
-						
+
 						if(playerEmpire.ForbidColonization == 0) {
 							if(eta <= 0)
 								addOption(menu, selected, clicked, format(locale::COLONIZE_WITH_BASIC, selected.name), Colonize(), COLONIZE_ICON);
 							else
 								addOption(menu, selected, clicked, format(locale::COLONIZE_WITH, selected.name, toString(eta, 1)), Colonize(), COLONIZE_ICON);
 						}
-						
+
 						if(clicked.isBeingColonized)
 							addOption(menu, selected, clicked, locale::CANCEL_AUTO_COLONIZE, CancelAutoColonize());
 					}
@@ -1024,8 +1156,8 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 				addedColonyOptions = true;
 			}
 		}
-		
-		if(!addedColonyOptions) {		
+
+		if(!addedColonyOptions) {
 			//Auto-colonization
 			if(clicked.isBeingColonized) {
 				addOption(menu, selected, clicked, locale::CANCEL_AUTO_COLONIZE, CancelAutoColonize());
@@ -1169,7 +1301,7 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 			&& constructObj.canBuildAsteroids && clicked.isAsteroid &&
 			cast<Asteroid>(clicked).canDevelop(playerEmpire)
 			&& clicked.region !is null && constructObj.region !is null) {
-	
+
 			Object@ pathFrom = constructObj;
 			if(constructSlave !is null && constructSlave.region !is null)
 				@pathFrom = constructSlave;
@@ -1179,13 +1311,13 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 
 			if(pathCheck.isUsablePath) {
 				double costFactor = 1.0 + config::ASTEROID_COST_STEP * double(pathCheck.pathSize - 1);
-	
+
 				Asteroid@ asteroid = cast<Asteroid>(clicked);
 				for(uint i = 0, cnt = asteroid.getAvailableCount(); i < cnt; ++i) {
 					uint resId = asteroid.getAvailable(i);
 					double cost = asteroid.getAvailableCost(i);
 					const ResourceType@ type = getResource(resId);
-	
+
 					if(type !is null && cost > 0.0)
 						addOption(menu, selected, clicked,
 								format(locale::BUILD_ASTEROID_OPTION,
@@ -1248,7 +1380,7 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 			}
 		}
 	}
-	
+
 	//System colonization
 	if(clicked.isStar && playerEmpire.NoAutoColonize == 0) {
 		Region@ region = clicked.region;
@@ -1302,7 +1434,7 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 					SetDefending(obj, true), icons::Defense);
 		}
 	}
-	
+
 	//Finance options
 	if(clicked is selected && clicked.owner is playerEmpire) {
 		Orbital@ orb = cast<Orbital>(clicked);
@@ -1321,13 +1453,24 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 		&& selected.laborIncome > 0) {
 		addOption(menu, selected, clicked, format(locale::EXPORT_LABOR, clicked.name), ExportLabor(), icons::Labor);
 	}
-	
+
 	//Rallying
 	if(selected !is null && selected.owner is playerEmpire && selected.hasConstruction)
 		if(selected.isRallying && (selected is clicked || selected.rallyObject is clicked))
 			addOption(menu, selected, clicked, locale::STOP_RALLY, ClearRally(), COLONIZE_ICON);
 		else if(selected.canBuildShips)
 			addOption(menu, selected, clicked, format(locale::RALLY_TO, clicked.name), Rally(), COLONIZE_ICON);
+
+	// LeaderAI order looping toggle
+	if(selected !is null && selected.owner.controlled && selected.hasLeaderAI && selected is clicked) {
+		if (false /* TODO !selected.isLoopingOrders()*/) {
+			addOption(menu, selected, clicked, locale::START_LOOP_ORDERS,
+					SetLooping(selected, true));
+		} else {
+			addOption(menu, selected, clicked, locale::STOP_LOOP_ORDERS,
+					SetLooping(selected, false));
+		}
+	}
 
 	//Scuttle options
 	if(clicked is selected && clicked.owner.controlled) {
@@ -1369,8 +1512,11 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 				if(selected !is clicked)
 					continue;
 
+				// let the player make cooldown targetless abilities as an
+				// order so they can loop them
+				bool asOrder = abl.type.cooldown > 0 && false; // TODO !abl.type.disableLooping;
 				addOption(menu, selected, clicked, option,
-					TriggerAbility(abl.id), abl.type.icon);
+					TriggerAbility(abl.id, asOrder=asOrder), abl.type.icon);
 			}
 			else if(abl.type.targets[0].type == TT_Object) {
 				if(selected is clicked)
@@ -1419,6 +1565,126 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 				optText = format("$1: $2", constructObj.name, cons.name);
 
 			addOption(menu, selected, clicked, optText, opt);
+		}
+	}
+
+	// Cargo Order system, credit to Dalo Lorn for starting this and Skeletonxf
+	// for the main implementation ported from Colonisation Expansion
+	if(selected !is null && clicked !is null) {
+		if(selected.hasMover && selected.hasCargo && clicked.hasCargo && selected.owner is clicked.owner) {
+			int canGiveCargoStatusID = getStatusID("CanGiveCargo");
+			int canTakeCargoStatusID = getStatusID("CanTakeCargo");
+
+			bool goingToPickupAnyCargo = false; // TODO selected.hasAnyCargoPickupOrder();
+			bool goingToDropoffCargo = false; // TODO selected.hasAnyCargoDropoffOrder(checkQueued=true);
+
+			const AbilityType@ transferAbility = getAbilityType("TransferCargo");
+			if (selected.hasStatusEffect(canGiveCargoStatusID)
+				&& (goingToPickupAnyCargo || selected.cargoStored > 0)
+				&& (clicked.cargoCapacity - clicked.cargoStored) > 0) {
+				addOption(
+					menu,
+					selected,
+					clicked,
+					locale::ABL_TRANSFER_CARGO,
+					TransferCargo(null, CT_Dropoff),
+					transferAbility.icon
+				);
+				addOption(
+					menu,
+					selected,
+					clicked,
+					locale::ABL_TRANSFER_CARGO_FIXED,
+					FixedQuantityTransferCargo(null, CT_Dropoff),
+					transferAbility.icon
+				);
+			}
+
+			const AbilityType@ pickupAbility = getAbilityType("PickupCargo");
+			if (selected.hasStatusEffect(canTakeCargoStatusID)
+				&& clicked.cargoStored > 0
+				&& (((selected.cargoCapacity - selected.cargoStored) > 0) || goingToDropoffCargo)) {
+				addOption(
+					menu,
+					selected,
+					clicked,
+					locale::ABL_PICKUP_CARGO,
+					TransferCargo(null, CT_Pickup),
+					pickupAbility.icon
+				);
+				addOption(
+					menu,
+					selected,
+					clicked,
+					locale::ABL_PICKUP_CARGO_FIXED,
+					FixedQuantityTransferCargo(null, CT_Pickup),
+					pickupAbility.icon
+				);
+			}
+
+			for(uint i = 0; i < getCargoTypeCount(); i++) {
+				const CargoType@ type = getCargoType(i);
+				// allow placing a dropoff order if we are going to pickup
+				// the right type of cargo even if we don't currently have it
+				bool goingToPickupCargo = false; // TODO selected.hasCargoPickupOrder(type.id, checkQueued=true);
+				// allow placing a pickup order even if our cargo storage is
+				// full if we are going to dropoff cargo
+				if (selected.hasStatusEffect(canGiveCargoStatusID)
+					&& (goingToPickupCargo || selected.getCargoStored(i) > 0)
+					&& (clicked.cargoCapacity - clicked.cargoStored) > 0) {
+					addOption(
+						menu,
+						selected,
+						clicked,
+						format(locale::ABL_TRANSFER_SPECIFIC_CARGO, type.name),
+						TransferCargo(type, CT_Dropoff),
+						type.icon
+					);
+					addOption(
+						menu,
+						selected,
+						clicked,
+						format(locale::ABL_TRANSFER_SPECIFIC_CARGO_FIXED, type.name),
+						FixedQuantityTransferCargo(type, CT_Dropoff),
+						type.icon
+					);
+				}
+				// check if can pickup this type of cargo
+				if (selected.hasStatusEffect(canTakeCargoStatusID)
+					&& clicked.getCargoStored(i) > 0
+					&& (((selected.cargoCapacity - selected.cargoStored) > 0) || goingToDropoffCargo)) {
+					addOption(
+						menu,
+						selected,
+						clicked,
+						format(locale::ABL_PICKUP_SPECIFIC_CARGO, type.name),
+						TransferCargo(type, CT_Pickup),
+						type.icon
+					);
+					addOption(
+						menu,
+						selected,
+						clicked,
+						format(locale::ABL_PICKUP_SPECIFIC_CARGO_FIXED, type.name),
+						FixedQuantityTransferCargo(type, CT_Pickup),
+						type.icon
+					);
+				}
+			}
+
+			// AutoMine order, replaces automine ability
+			int canMineAsteroidsStatusID = getStatusID("CanMineAsteroids");
+			const AbilityType@ automineAbility = getAbilityType("AutoMine");
+			if (selected.hasStatusEffect(canMineAsteroidsStatusID)) {
+				addOption(
+					menu,
+					selected,
+					clicked,
+					locale::ABL_AUTOMINE_ORDER,
+					AutoMine(),
+					automineAbility.icon
+				);
+			}
 		}
 	}
 
