@@ -15,6 +15,9 @@ enum OrderType {
 	OT_Wait,
 	OT_Jumpdrive,
 	OT_Chase,
+	OT_Cargo,
+	OT_AutoMine,
+	OT_Loop,
 	OT_INVALID
 };
 
