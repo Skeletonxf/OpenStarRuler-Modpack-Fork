@@ -136,9 +136,9 @@ tidy class CargoOrder : Order {
 		} else {
 			if (capacityLimit > 0.0) {
 				if (cargoId == -1) {
-					// TODO src.transferAllCargoToFixed(dest, capacityLimit);
+					src.transferAllCargoToFixed(dest, capacityLimit);
 				} else {
-					// TODO src.transferCargoToFixed(cargoId, dest, capacityLimit);
+					src.transferCargoToFixed(cargoId, dest, capacityLimit);
 				}
 			} else {
 				if (cargoId == -1) {
