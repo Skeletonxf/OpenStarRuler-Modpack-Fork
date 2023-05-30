@@ -1,4 +1,5 @@
 import cargo;
+from objects.Asteroid import createAsteroid;
 
 tidy class Cargo : CargoStorage, Component_Cargo {
 	void getCargo() {
@@ -39,6 +40,11 @@ tidy class Cargo : CargoStorage, Component_Cargo {
 		delta = true;
 	}
 
+	void overrideCargoStorage(double amount) {
+		capacity = amount;
+		delta = true;
+	}
+
 	void addCargo(uint typeId, double amount) {
 		auto@ type = getCargoType(typeId);
 		if(type is null)
@@ -61,9 +67,16 @@ tidy class Cargo : CargoStorage, Component_Cargo {
 	}
 
 	void transferAllCargoTo(Object@ other) {
+		transferAllCargoToFixed(other, 0.0);
+	}
+
+	void transferAllCargoToFixed(Object@ other, double limit) {
 		if(types is null || !other.hasCargo)
 			return;
 		double cap = other.cargoCapacity - other.cargoStored;
+		if (limit > 0.0) {
+			cap = min(cap, limit);
+		}
 		while(cap > 0 && types.length > 0) {
 			auto@ type = types[0];
 			double cons = min(cap / type.storageSize, amounts[0]);
@@ -89,6 +102,10 @@ tidy class Cargo : CargoStorage, Component_Cargo {
 	}
 
 	void transferCargoTo(uint typeId, Object@ other) {
+		transferCargoToFixed(typeId, other, 0.0);
+	}
+
+	void transferCargoToFixed(uint typeId, Object@ other, double limit) {
 		if(types is null || types.length == 0)
 			return;
 		auto@ type = getCargoType(typeId);
@@ -98,6 +115,9 @@ tidy class Cargo : CargoStorage, Component_Cargo {
 		double stored = getCargoStored(typeId);
 		if(stored != 0.0) {
 			double cap = other.cargoCapacity - other.cargoStored;
+			if (limit > 0.0) {
+				cap = min(cap, limit);
+			}
 			double cons = min(cap / type.storageSize, stored);
 			cons = consume(type, cons, partial=true);
 			if(cons > 0) {
@@ -118,5 +138,25 @@ tidy class Cargo : CargoStorage, Component_Cargo {
 		writeCargo(msg);
 		delta = false;
 		return true;
+	}
+
+	void destroyCargo(Object& obj) {
+		for(uint i = 0; i < getCargoTypeCount(); i++) {
+			double cargoStored = getCargoStored(i);
+			if (cargoStored > 0) {
+				const CargoType@ type = getCargoType(i);
+				if (type is null || false /* TODO !type.dropsOnDeath*/) {
+					continue;
+				}
+				Asteroid@ roid = createAsteroid(obj.position + vec3d(randomd(-20, 20), 0.0, randomd(-20, 20)), delay=true);
+				Region@ reg = obj.region;
+				if(reg !is null) {
+					roid.orbitAround(reg.position);
+					roid.orbitSpin(randomd(20.0, 60.0));
+				}
+				roid.addCargo(i, randomd(0.5, 1) * cargoStored);
+				roid.initMesh();
+			}
+		}
 	}
 };
