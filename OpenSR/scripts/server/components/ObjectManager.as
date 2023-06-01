@@ -6,6 +6,7 @@ import object_creation;
 import cargo;
 import systems;
 import system_pathing;
+import MP_hull_colors;
 
 tidy class ColonizationEvent : Savable, Serializable {
 	Object@ from;
@@ -32,7 +33,7 @@ tidy class ColonizationEvent : Savable, Serializable {
 	}
 };
 
-const Design@ getDefenseDesign(Empire& owner, double defenseRate, double tolerance = 1.0, bool satellite = false, int maxSize = -1) {
+const Design@ getDefenseDesign(Empire& owner, double defenseRate, double tolerance = 1.0, bool satellite = false, int maxSize = -1, bool planetDefenseGen = false, bool flagshipDefenseGen = false, bool alphaDefenseGen = false, bool betaDefenseGen = false, bool gammaDefenseGen = false) {
 	const Design@ defenseDesign;
 
 	double laborV = defenseRate * 60.0;
@@ -59,6 +60,8 @@ const Design@ getDefenseDesign(Empire& owner, double defenseRate, double toleran
 		if(maxSize > 0 && dsg.size > maxSize)
 			continue;
 		if(dsg.hasTag(ST_HasMaintenanceCost))
+			continue;
+		if (!meetsColorCompatibility(dsg, planetDefenseGen, flagshipDefenseGen, alphaDefenseGen, betaDefenseGen, gammaDefenseGen))
 			continue;
 		if(hasDesignCosts(dsg))
 			continue;
@@ -246,7 +249,7 @@ tidy class ObjectManager : Component_ObjectManager, Savable {
 		}
 		return closest;
 	}
-	
+
 	bool get_hasPlanets() {
 		return planets.length != 0;
 	}
@@ -373,7 +376,7 @@ tidy class ObjectManager : Component_ObjectManager, Savable {
 				yield(q.to);
 		}
 	}
-	
+
 	bool get_hasFlingBeacons() {
 		return flingBeacons.length != 0;
 	}
@@ -732,9 +735,24 @@ tidy class ObjectManager : Component_ObjectManager, Savable {
 		const Design@ dsg;
 		double labor = 0;
 
+		bool planetDefense = spawnAt.isPlanet || spawnAt.isRegion;
+		bool flagshipDefense = spawnAt.isShip;
+		bool alphaDefense = false;
+		bool betaDefense = false;
+		bool gammaDefense = false;
+		if (flagshipDefense) {
+			Ship@ ship = cast<Ship>(spawnAt);
+			if (ship !is null) {
+				const Design@ dsg = ship.blueprint.design;
+				alphaDefense = dsg.hasTag(ST_IsAlphaDefense);
+				betaDefense = dsg.hasTag(ST_IsBetaDefense);
+				gammaDefense = dsg.hasTag(ST_IsGammaDefense);
+			}
+		}
+
 		while(defense > 0) {
 			if(dsg is null) {
-				@dsg = getDefenseDesign(owner, defense / 60.0);
+				@dsg = getDefenseDesign(owner, defense / 60.0, planetDefenseGen = planetDefense, flagshipDefenseGen = flagshipDefense, alphaDefenseGen = alphaDefense, betaDefenseGen = betaDefense, gammaDefenseGen = gammaDefense);
 				if(dsg is null)
 					return;
 				labor = getLaborCost(dsg, 1);
@@ -834,7 +852,7 @@ tidy class ObjectManager : Component_ObjectManager, Savable {
 		WriteLock lck(defenseMtx);
 		while(defense > 0) {
 			if(defenseDesign is null) {
-				@defenseDesign = getDefenseDesign(owner, max(defenseRate, defense / 60.0));
+				@defenseDesign = getDefenseDesign(owner, max(defenseRate, defense / 60.0), planetDefenseGen = true);
 				if(defenseDesign is null)
 					return;
 				defenseLabor = getLaborCost(defenseDesign, 1);
@@ -1093,7 +1111,7 @@ tidy class ObjectManager : Component_ObjectManager, Savable {
 	void checkAutoImport(Empire& emp, Object@ from) {
 		if(autoImports.length == 0)
 			return;
-		
+
 		if(!from.nativeResourceUsable[0])
 			return;
 		const ResourceType@ res = getResource(from.primaryResourceType);
@@ -1172,10 +1190,10 @@ tidy class ObjectManager : Component_ObjectManager, Savable {
 			return;
 		}
 	}
-	
+
 	void cancelAutoImportTo(Empire& emp, Object& into) {
 		WriteLock lock(plMutex);
-		
+
 		for(int i = int(autoImports.length) - 1; i >= 0; --i) {
 			AutoImport@ imp = autoImports[i];
 			if(!imp.handled && imp.to is into) {
