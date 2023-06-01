@@ -24,6 +24,8 @@ import designs;
 import design_settings;
 from traits import getTraitID;
 
+import MP_hull_colors;
+
 import Tab@ createDesignOverviewTab() from "tabs.DesignOverviewTab";
 import const Design@ createRandomDesign(uint type, int size, Empire@ emp) from "util.random_designs";
 from tabs.tabbar import browseTab, popTab, ActiveTab;
@@ -3674,6 +3676,8 @@ class DesignEditor : Tab {
 	void draw() {
 		//Draw the global background
 		skin.draw(SS_DesignEditorBG, SF_Normal, AbsolutePosition);
+		// Draw the spawning colors tint
+		skin.draw(SS_HexPattern, SF_Normal, AbsolutePosition, colorForDesign(design));
 
 		//Top bar
 		vec2i topLeft = AbsolutePosition.topLeft;

@@ -7,6 +7,7 @@ S_HYPERLASER_DESC: <<
 	[img=Minus]Higher power and supply costs.[/img]
 	[img=Minus]Very limited turret firing arc.[/img]
 >>
+SC_Spawning: [hspace=4/][vspace=-3][img=AffinityIcons::3;32x32/][/vspace][hspace=6/]  [color=#b979c3]Spawning[/color]
 ALPHA: Alpha
 ALPHA_DESC: <<
 	Generate Alpha local defense.
