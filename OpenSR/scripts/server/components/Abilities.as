@@ -339,6 +339,20 @@ tidy class Abilities : Component_Abilities, Savable {
 		return abl.isChanneling();
 	}
 
+	bool isTargeting(int id, Object@ target) {
+		Ability@ abl = getAbility(id);
+		if (abl is null)
+			return false;
+		return abl.hasTarget(target);
+	}
+
+	bool isTargeting(int id, vec3d point) {
+		Ability@ abl = getAbility(id);
+		if (abl is null)
+			return false;
+		return abl.hasTarget(point);
+	}
+
 	double getAbilityRange(int id, Object@ target) {
 		Ability@ abl = getAbility(id);
 		if(abl is null)

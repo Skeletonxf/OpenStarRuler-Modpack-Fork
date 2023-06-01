@@ -32,6 +32,8 @@ server:
 	void disableAbility(int id);
 	void enableAbility(int id);
 	bool isChanneling(int id);
+	bool isTargeting(int id, Object@ target);
+	bool isTargeting(int id, vec3d point);
 
 	bool isAbilityOnCooldown(int id);
 	double getAbilityRange(int id, Object@ target);

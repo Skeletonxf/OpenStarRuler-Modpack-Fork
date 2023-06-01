@@ -14,7 +14,12 @@ from orders.OddityGateOrder import OddityGateOrder;
 from orders.SlipstreamOrder import SlipstreamOrder;
 from orders.AutoExploreOrder import AutoExploreOrder;
 from orders.WaitOrder import WaitOrder;
+from orders.CargoOrder import CargoOrder;
+from orders.AutoMineOrder import AutoMineOrder;
 from orders.ChaseOrder import ChaseOrder;
+from orders.LoopOrder import LoopOrder;
+from orders import OrderType;
+import MP_hull_colors;
 from resources import getBuildCost, getMaintenanceCost, MoneyType, getLaborCost;
 import abilities;
 import orbitals;
@@ -96,6 +101,10 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 	bool rememberGhosts = true;
 	//Whether fleets can autofill from this
 	bool AllowFillFrom = false;
+	// Whether to automatically build new supports with local defense generation
+	// until full
+	// TODO: Default to false for sandbox
+	bool autoBuild = true;
 
 	AutoState autoState = AS_None;
 	vec3d initialPosition;
@@ -119,6 +128,18 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 	array<Object@>@ addedSupports;
 
 	FleetPlaneNode@ node;
+
+	// Order looping code
+	bool isLooping = false;
+
+	void setLooping(bool isLoop = true) {
+		isLooping = isLoop;
+		orderDelta = true;
+	}
+
+	bool isLoopingOrders() {
+		return isLooping;
+	}
 
 	LeaderAI() {
 	}
@@ -244,8 +265,17 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 				case OT_AutoExplore:
 					@ord = AutoExploreOrder(msg);
 				break;
+				case OT_Cargo:
+					@ord = CargoOrder(msg);
+				break;
+				case OT_AutoMine:
+					@ord = AutoMineOrder(msg);
+				break;
 				case OT_Chase:
 					@ord = ChaseOrder(msg);
+				break;
+				case OT_Loop:
+					@ord = LoopOrder(msg);
 				break;
 				case OT_Wait:
 					@ord = WaitOrder(msg);
@@ -277,6 +307,9 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 			msg >> FreeRaiding;
 			msg >> RaidRange;
 		}
+
+		msg >> isLooping;
+		msg >> autoBuild;
 	}
 
 	double get_GhostHP() const {
@@ -331,7 +364,7 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 
 		cnt = orderCount;
 		msg << cnt;
-		
+
 		Order@ ord = order;
 		while(ord !is null) {
 			ord.save(msg);
@@ -343,6 +376,9 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 
 		msg << FreeRaiding;
 		msg << RaidRange;
+
+		msg << isLooping;
+		msg << autoBuild;
 	}
 
 	float getFleetEffectiveness() const {
@@ -418,7 +454,7 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 			cast<Ship>(obj).blueprint.delta = true;
 		delta = true;
 	}
-	
+
 	void set_engageRange(Object& obj, double radius) {
 		engagementRange = radius - getFormationRadius(obj);
 	}
@@ -442,27 +478,27 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 			return null;
 		return supports[index];
 	}
-	
+
 	void idleAllSupports() {
 		for(uint i = 0, cnt = supports.length; i < cnt; ++i)
 			supports[i].supportIdle();
 	}
-	
+
 	void standDownAllSupports() {
 		for(uint i = 0, cnt = supports.length; i < cnt; ++i)
 			supports[i].doRaids = false;
 	}
-	
+
 	void updateFleetStrength(Object& obj) {
 		double hp = 0.0, dps = 0.0, maxHP = 0.0, maxDPS = 0.0;
-		
+
 		if(obj.isShip) {
 			Ship@ ship = cast<Ship>(obj);
 			auto@ bp = ship.blueprint;
 
 			hp = bp.currentHP * bp.hpFactor + ship.Shield;
 			dps = ship.DPS * bp.shipEffectiveness;
-			
+
 			maxHP = bp.design.totalHP - bp.removedHP + ship.MaxShield;
 			maxDPS = ship.MaxDPS;
 		}
@@ -484,7 +520,7 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 				maxDPS += ship.MaxDPS;
 			}
 		}
-		
+
 		fleetHP = hp;
 		fleetDPS = dps;
 		fleetMaxHP = maxHP;
@@ -495,11 +531,11 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 		bonusDPS += amount;
 		delta = true;
 	}
-	
+
 	double getFleetHP() const {
 		return fleetHP;
 	}
-	
+
 	double getFleetDPS() const {
 		return fleetDPS + bonusDPS;
 	}
@@ -729,7 +765,7 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 			return 0;
 		return groupData[ind].amount;
 	}
-	
+
 	bool get_hasOrderedSupports() const {
 		return supplyOrdered > 0;
 	}
@@ -749,9 +785,22 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 			}
 		}
 
+		Order@ finished;
+		// Count how many orders we have in our linked list, so we break out of
+		// the while loop below the moment we tick the number of orders we
+		// started with if we still have others we added back onto the list
+		// This prevents infinite loops when all orders are OS_COMPLETED
+		uint ordersTotal = 0;
+		Order@ o = order;
+		while(o !is null) {
+			@o = o.next;
+			ordersTotal += 1;
+		}
+		uint ordersTicked = 0;
+
 		//Do actions required for orders
 		Order@ ord = order;
-		while(ord !is null) {
+		while(ord !is null && ordersTicked < ordersTotal) {
 			switch(ord.tick(obj, time)) {
 				case OS_BLOCKING:
 					//Stop doing anything if the order blocked
@@ -762,6 +811,7 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 				break;
 				case OS_COMPLETED:
 					ord.destroy();
+					@finished = ord;
 					//Remove order from the list and continue
 					if(ord.prev is null) {
 						@ord = ord.next;
@@ -775,9 +825,18 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 							@next.prev = ord.prev;
 						@ord.prev.next = next;
 					}
+					if (isLooping && finished.type != OT_Loop) {
+						// add the order to the back of the queue
+						@finished.next = null;
+						@finished.prev = null;
+						finished.resetForAnotherLoop();
+						addOrder(obj, finished, true);
+						obj.wake();
+					}
 					orderDelta = true;
 				break;
 			}
+			ordersTicked += 1;
 		}
 		if(order !is null)
 			firstOrder = order.type;
@@ -863,6 +922,98 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 		return false;
 	}
 
+	bool hasCargoOrder(int cargoId, bool checkQueued = false) {
+		if(order is null)
+			return false;
+		if (!checkQueued) {
+			if (order.type == OT_Cargo) {
+				return order.getCargoId() == cargoId;
+			} else {
+				return false;
+			}
+		}
+
+		Order@ ord = @order;
+		while(ord !is null) {
+			if (ord.type == OT_Cargo) {
+				if (ord.getCargoId() == cargoId) {
+					return true;
+				};
+			}
+			@ord = ord.next;
+		}
+		return false;
+	}
+
+	bool hasCargoPickupOrder(int cargoId, bool checkQueued = false) {
+		if(order is null)
+			return false;
+		if (!checkQueued) {
+			if (order.type == OT_Cargo) {
+				return order.getCargoId() == cargoId && order.getIsPickup();
+			} else {
+				return false;
+			}
+		}
+
+		Order@ ord = @order;
+		while(ord !is null) {
+			if (ord.type == OT_Cargo) {
+				if (ord.getCargoId() == cargoId && ord.getIsPickup()) {
+					return true;
+				};
+			}
+			@ord = ord.next;
+		}
+		return false;
+	}
+
+	bool hasAnyCargoDropoffOrder(bool checkQueued = false) {
+		if(order is null)
+			return false;
+		if (!checkQueued) {
+			if (order.type == OT_Cargo) {
+				return order.getIsDropoff();
+			} else {
+				return false;
+			}
+		}
+
+		Order@ ord = @order;
+		while(ord !is null) {
+			if (ord.type == OT_Cargo) {
+				if (ord.getIsDropoff()) {
+					return true;
+				};
+			}
+			@ord = ord.next;
+		}
+		return false;
+	}
+
+	bool hasAnyCargoPickupOrder(bool checkQueued = false) {
+		if(order is null)
+			return false;
+		if (!checkQueued) {
+			if (order.type == OT_Cargo) {
+				return order.getIsPickup();
+			} else {
+				return false;
+			}
+		}
+
+		Order@ ord = @order;
+		while(ord !is null) {
+			if (ord.type == OT_Cargo) {
+				if (order.getIsPickup()) {
+					return true;
+				};
+			}
+			@ord = ord.next;
+		}
+		return false;
+	}
+
 	uint get_orderCount() {
 		uint ordCount = 0;
 		Order@ ord = @order;
@@ -889,7 +1040,7 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 		else
 			return "";
 	}
-	
+
 	uint get_firstOrderType() {
 		return firstOrder;
 	}
@@ -1022,6 +1173,15 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 		orderDelta = true;
 	}
 
+	bool get_autoBuildSupports() {
+		return autoBuild;
+	}
+
+	void set_autoBuildSupports(bool value) {
+		autoBuild = value;
+		orderDelta = true;
+	}
+
 	bool get_autoFillSupports() {
 		return autoFill;
 	}
@@ -1048,11 +1208,11 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 		//Delete all orders we can, move any orders that persist to a new chain
 		if(order !is null) {
 			Order@ cur = order;
-			
+
 			Order@ chain = null;
 			@order = null;
 			firstOrder = OT_INVALID;
-		
+
 			while(cur !is null) {
 				Order@ next = cur.next;
 				if(!cur.cancel(obj)) {
@@ -1061,7 +1221,7 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 						@order = cur;
 					else //@chain !is null
 						@chain.next = cur;
-					
+
 					@chain = cur;
 				}
 				else {
@@ -1069,7 +1229,7 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 				}
 				@cur = next;
 			}
-			
+
 			orderDelta = true;
 		}
 		if(obj.hasMover && obj.isMoving)
@@ -1092,31 +1252,31 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 		else
 			firstOrder = OT_INVALID;
 	}
-	
+
 	void insertOrder(Object& obj, Order@ ord, uint index) {
 		orderDelta = true;
-		
+
 		if(order is null) {
 			@order = ord;
 			return;
 		}
-		
+
 		if(index == 0) {
 			@order.prev = ord;
 			@ord.next = order;
 			@order = ord;
 			return;
 		}
-		
+
 		Order@ o = order;
 		while(index > 0 && o.next !is null) {
 			@o = o.next;
 			index--;
 		}
-		
+
 		@ord.next = o.next;
 		@ord.prev = o;
-		
+
 		if(o.next !is null)
 			@o.next.prev = ord;
 		@o.next = ord;
@@ -1130,7 +1290,7 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 	void addOrder(Object& obj, Order@ ord, bool append) {
 		autoState = AS_None;
 		orderDelta = true;
-		
+
 		if(!append || order is null) {
 			clearOrders(obj);
 			if(order is null) {
@@ -1138,7 +1298,7 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 				return;
 			}
 		}
-		
+
 		//If we only cancelled some orders, or we wanted to append, we append now
 		Order@ last = order;
 		while(last.next !is null)
@@ -1335,11 +1495,32 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 		obj.wake();
 	}
 
+	void addCargoOrder(Object& obj, Object& targ, int cargoId, double quantity, bool pickup, bool append) {
+		if (obj.owner !is targ.owner) {
+			return;
+		}
+		addOrder(obj, CargoOrder(targ, cargoId, pickup, capacityLimit=quantity), append);
+		obj.wake();
+	}
+
+	void addAutoMineOrder(Object& obj, Object& targ, bool append) {
+		if (obj.owner !is targ.owner) {
+			return;
+		}
+		addOrder(obj, AutoMineOrder(targ), append);
+		obj.wake();
+	}
+
 	void addChaseOrder(Object& obj, Object& targ, bool append) {
 		if (obj is targ) {
 			return;
 		}
 		addOrder(obj, ChaseOrder(targ), append);
+		obj.wake();
+	}
+
+	void addLoopOrder(Object& obj, bool append, bool isLoop) {
+		addOrder(obj, LoopOrder(isLoop), append);
 		obj.wake();
 	}
 
@@ -1357,6 +1538,8 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 			needExperience = ship.blueprint.design.size * config::EXPERIENCE_BASE_AMOUNT;
 
 			const Design@ dsg = ship.blueprint.design;
+			// TODO: Double check later if we need to apply EmpireSupportCapacityFactor here
+			// CE has it but perhaps it wasn't ported to the modpack?
 			if(dsg !is null && !dsg.hasTag(ST_Weapon) && getSupportCommandFor(dsg, obj.owner) > 0)
 				engageType = ER_RaidingOnly;
 
@@ -1420,7 +1603,7 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 			prevOrbit.leaveFromOrbit(cast<Ship>(obj));
 		clearOrders(obj);
 	}
-	
+
 	void leaderRegionChanged(Object& obj) {
 		if(node !is null)
 			node.hintParentObject(obj.region, false);
@@ -1448,7 +1631,7 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 				ship.repairShip(per);
 		}
 	}
-	
+
 	void findTargets(Object& source, array<Object@>& targets, Object& obj, Empire@ emp, int depth = 3, double maxDistSQ = 1.0e6) {
 		for(uint i = 0; i < TARGET_COUNT; ++i) {
 			auto@ targ = obj.targets[i];
@@ -1462,7 +1645,7 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 				}
 			}
 		}
-		
+
 		if(depth > 0)
 			for(uint i = 0; i < TARGET_COUNT; ++i)
 				findTargets(source, targets, obj.targets[i], emp, depth-1, maxDistSQ);
@@ -1481,21 +1664,21 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 				}
 			}
 		}
-		
+
 		if(depth > 0)
 			for(uint i = 0; i < TARGET_COUNT; ++i)
 				findRegionTargets(region, targets, obj.targets[i], emp, depth-1);
 	}
-	
-	
+
+
 	bool inFleetFight = false;
 	Object@ cavalryTarget;
 	array<Object@> targs;
-	
+
 	void commandTick(Object& obj) {
 		if(supports.length == 0)
 			return;
-	
+
 		targs.length = 0;
 		Region@ reg = obj.region;
 		if((FreeRaiding || RaidRange < 0) && reg !is null)
@@ -1510,34 +1693,34 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 		/*	standDownAllSupports();*/
 		/*}*/
 		/*inFleetFight = engage;*/
-		
+
 		if(!engage)
 			@cavalryTarget = null;
 		if(!engage || targs.length == 0)
 			return;
-		
+
 		if(targs.length > 0) {
 			if(cavalryTarget is null || !cavalryTarget.valid) {
 				@cavalryTarget = null;
 
 				for(uint i = 0, cnt = targs.length; i < cnt; ++i) {
 					auto@ targ = targs[i];
-					if(targ.isShip && targ.hasSupportAI) {	
+					if(targ.isShip && targ.hasSupportAI) {
 						@cavalryTarget = targ;
 						break;
 					}
 				}
-				
+
 				if(cavalryTarget !is null)
 					for(uint i = 0, cnt = supports.length; i < cnt; ++i)
 						supports[i].cavalryCharge(cavalryTarget);
 			}
-			
+
 			uint supportCount = supports.length;
 			for(uint i = 0, cnt = targs.length; i < cnt; ++i)
 				supports[randomi(0, supportCount-1)].supportInterfere(targs[i], obj);
 		}
-		
+
 		targs.length = 0;
 	}
 
@@ -1833,11 +2016,11 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 		uint takeFromGhost = 0;
 		if(ind != -1)
 			takeFromGhost = min(groupData[ind].ghost, amount);
-		
+
 		uint capMax = 0;
 		if(supplyCapacity > supplyUsed)
 			capMax = (supplyCapacity - supplyUsed) / uint(ofDesign.size);
-		
+
 		amount = min(amount, capMax + takeFromGhost);
 		if(amount == 0)
 			return;
@@ -1952,7 +2135,7 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 		}
 		return cost;
 	}
-	
+
 	void rebuildAllGhosts(Object& obj) {
 		for(uint i = 0, cnt = groupData.length; i < cnt; ++i) {
 			GroupData@ data = groupData[i];
@@ -2082,23 +2265,24 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 			return pl.OrbitSize;
 		return obj.radius * 10.0 + 20.0;
 	}
-	
+
+	// TODO: Check here as well, CE applies empire mass factors but modpack doesn't?
 	double get_slowestSupportAccel(const Object& obj) const {
 		double slowest = 0.0;
-		
+
 		for(uint i = 0, cnt = groupData.length; i < cnt; ++i) {
 			GroupData@ dat = groupData[i];
 			if(dat.amount == 0)
 				continue;
-			
+
 			auto design = dat.dsg;
-			
+
 			double mass = max(getMassFor(design, obj.owner), 0.01f);
 			double accel = design.total(SV_Thrust) / mass;
 			if((accel < slowest || slowest == 0) && accel > 0.0)
 				slowest = accel;
 		}
-		
+
 		return slowest;
 	}
 
@@ -2340,7 +2524,7 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 		Ship@ othership = cast<Ship>(support);
 		if(othership !is null) {
 			othership.supportIdle();
-		
+
 			const Design@ dsg = othership.blueprint.design;
 			int ind = getGroupDataIndex(dsg, false);
 			bool canGhost = false;
@@ -2491,6 +2675,14 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 		if(sourceCnt == 0)
 			return;
 
+		LeaderDefense leaderDefense;
+		leaderDefense.getFor(obj);
+		bool planetDefenseGen = leaderDefense.planetDefense;
+		bool flagshipDefenseGen = leaderDefense.flagshipDefense;
+		bool alphaDefenseGen = leaderDefense.alphaDefense;
+		bool betaDefenseGen = leaderDefense.betaDefense;
+		bool gammaDefenseGen = leaderDefense.gammaDefense;
+
 		//Try to refresh ghosts first
 		bool done = false;
 		while(!done) {
@@ -2499,6 +2691,8 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 			for(uint i = 0; i < cnt; ++i) {
 				GroupData@ dat = groupData[i];
 				if(dat.dsg.hasTag(ST_Satellite))
+					continue;
+				if(!meetsColorCompatibility(dat.dsg, planetDefenseGen, flagshipDefenseGen, alphaDefenseGen, betaDefenseGen, gammaDefenseGen))
 					continue;
 				if(dat.ghost > 0) {
 					uint need = dat.ghost;
@@ -2546,6 +2740,8 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 				GroupData@ dat = otherData[j];
 				if(dat.dsg.hasTag(ST_Satellite))
 					continue;
+				if(!meetsColorCompatibility(dat.dsg, planetDefenseGen, flagshipDefenseGen, alphaDefenseGen, betaDefenseGen, gammaDefenseGen))
+					continue;
 				uint sup = uint(dat.dsg.size);
 				uint amt = min(dat.amount, supplyLeft / sup);
 				if(amt > 0) {
@@ -2572,6 +2768,8 @@ tidy class LeaderAI : Component_LeaderAI, Savable {
 		msg.writeSmall(uint(engageType));
 		msg.writeSmall(uint(engageBehave));
 		msg << autoFill << autoBuy << AllowFillFrom;
+		msg << isLooping;
+		msg << autoBuild;
 	}
 
 	void writeLeaderData(Message& msg) {

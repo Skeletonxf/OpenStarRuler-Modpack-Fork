@@ -526,8 +526,7 @@ class SetLooping: Option {
 		if(obj is null || !obj.hasLeaderAI || !obj.owner.controlled) {
 			return;
 		}
-		//obj.setLooping(loop);
-		// TODO obj.addLoopOrder(shiftKey, loop);
+		obj.addLoopOrder(shiftKey, loop);
 	}
 }
 
@@ -808,15 +807,15 @@ class TransferCargo : SelectionOption {
 		// null cargo type is interpreted as transfer all cargo types
 		if (type is null) {
 			if (transfer == CT_Pickup) {
-				// TODO obj.addCargoOrder(clicked, -1, 0.0, true, shiftKey);
+				obj.addCargoOrder(clicked, -1, 0.0, true, shiftKey);
 			} else if (transfer == CT_Dropoff) {
-				// TODO obj.addCargoOrder(clicked, -1, 0.0, false, shiftKey);
+				obj.addCargoOrder(clicked, -1, 0.0, false, shiftKey);
 			}
 		} else {
 			if (transfer == CT_Pickup) {
-				// TODO obj.addCargoOrder(clicked, type.id, 0.0, true, shiftKey);
+				obj.addCargoOrder(clicked, type.id, 0.0, true, shiftKey);
 			} else if (transfer == CT_Dropoff) {
-				// TODO obj.addCargoOrder(clicked, type.id, 0.0, false, shiftKey);
+				obj.addCargoOrder(clicked, type.id, 0.0, false, shiftKey);
 			}
 		}
 	}
@@ -867,15 +866,15 @@ class FixedQuantityTransferCargo : SelectionOption, IInputDialogCallback {
 			// null cargo type is interpreted as transfer all cargo types
 			if (type is null) {
 				if (transfer == CT_Pickup) {
-					// TODO obj.addCargoOrder(clicked, -1, quantity, true, shiftKeyMemory);
+					obj.addCargoOrder(clicked, -1, quantity, true, shiftKeyMemory);
 				} else if (transfer == CT_Dropoff) {
-					// TODO obj.addCargoOrder(clicked, -1, quantity, false, shiftKeyMemory);
+					obj.addCargoOrder(clicked, -1, quantity, false, shiftKeyMemory);
 				}
 			} else {
 				if (transfer == CT_Pickup) {
-					// TODO obj.addCargoOrder(clicked, type.id, quantity, true, shiftKeyMemory);
+					obj.addCargoOrder(clicked, type.id, quantity, true, shiftKeyMemory);
 				} else if (transfer == CT_Dropoff) {
-					// TODO obj.addCargoOrder(clicked, type.id, quantity, false, shiftKeyMemory);
+					obj.addCargoOrder(clicked, type.id, quantity, false, shiftKeyMemory);
 				}
 			}
 		}
@@ -887,7 +886,7 @@ class AutoMine : SelectionOption {
 		if(obj is null || !obj.hasCargo || !obj.hasLeaderAI || !obj.owner.controlled) {
 			return;
 		}
-		// TODO obj.addAutoMineOrder(clicked, shiftKey);
+		obj.addAutoMineOrder(clicked, shiftKey);
 	}
 }
 
@@ -1463,7 +1462,7 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 
 	// LeaderAI order looping toggle
 	if(selected !is null && selected.owner.controlled && selected.hasLeaderAI && selected is clicked) {
-		if (false /* TODO !selected.isLoopingOrders()*/) {
+		if (!selected.isLoopingOrders()) {
 			addOption(menu, selected, clicked, locale::START_LOOP_ORDERS,
 					SetLooping(selected, true));
 		} else {
@@ -1514,7 +1513,7 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 
 				// let the player make cooldown targetless abilities as an
 				// order so they can loop them
-				bool asOrder = abl.type.cooldown > 0 && false; // TODO !abl.type.disableLooping;
+				bool asOrder = abl.type.cooldown > 0 && !abl.type.disableLooping;
 				addOption(menu, selected, clicked, option,
 					TriggerAbility(abl.id, asOrder=asOrder), abl.type.icon);
 			}
@@ -1575,8 +1574,8 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 			int canGiveCargoStatusID = getStatusID("CanGiveCargo");
 			int canTakeCargoStatusID = getStatusID("CanTakeCargo");
 
-			bool goingToPickupAnyCargo = false; // TODO selected.hasAnyCargoPickupOrder();
-			bool goingToDropoffCargo = false; // TODO selected.hasAnyCargoDropoffOrder(checkQueued=true);
+			bool goingToPickupAnyCargo = selected.hasAnyCargoPickupOrder();
+			bool goingToDropoffCargo = selected.hasAnyCargoDropoffOrder(checkQueued=true);
 
 			const AbilityType@ transferAbility = getAbilityType("TransferCargo");
 			if (selected.hasStatusEffect(canGiveCargoStatusID)
@@ -1626,7 +1625,7 @@ bool openContextMenu(Object& clicked, Object@ selected = null) {
 				const CargoType@ type = getCargoType(i);
 				// allow placing a dropoff order if we are going to pickup
 				// the right type of cargo even if we don't currently have it
-				bool goingToPickupCargo = false; // TODO selected.hasCargoPickupOrder(type.id, checkQueued=true);
+				bool goingToPickupCargo = selected.hasCargoPickupOrder(type.id, checkQueued=true);
 				// allow placing a pickup order even if our cargo storage is
 				// full if we are going to dropoff cargo
 				if (selected.hasStatusEffect(canGiveCargoStatusID)

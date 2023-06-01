@@ -29,6 +29,11 @@ class OrderDesc : Serializable {
 	uint type;
 	bool hasMovement;
 	vec3d moveDestination;
+	// Extra info for the clients so they can present cargo
+	// order options smartly.
+	int cargoId = -1;
+	bool isPickup = false;
+	bool isDropoff = false;
 
 	void write(Message& msg) {
 		msg << uint(type);
@@ -39,6 +44,9 @@ class OrderDesc : Serializable {
 		else {
 			msg.write0();
 		}
+		msg << cargoId;
+		msg << isPickup;
+		msg << isDropoff;
 	}
 
 	void read(Message& msg) {
@@ -46,5 +54,8 @@ class OrderDesc : Serializable {
 		hasMovement = msg.readBit();
 		if(hasMovement)
 			msg >> moveDestination;
+		msg >> cargoId;
+		msg >> isPickup;
+		msg >> isDropoff;
 	}
 };

@@ -7,3 +7,53 @@ S_HYPERLASER_DESC: <<
 	[img=Minus]Higher power and supply costs.[/img]
 	[img=Minus]Very limited turret firing arc.[/img]
 >>
+ALPHA: Alpha
+ALPHA_DESC: <<
+	Generate Alpha local defense.
+
+	[i][color=#aaa]Flagships and stations with an Alpha hull and local defense generation will spawn Alpha support ships and satellites instead of supports and satellites without a Spawning hull.[/color][/i]
+
+	[i][color=#aaa]If the flagship has multiple Spawning hulls applied, it will spawn support ships with any matching hulls.[/color][/i]
+>>
+BETA: Beta
+BETA_DESC: <<
+	Generate Beta local defense.
+
+	[i][color=#aaa]Flagships and stations with a Beta hull and local defense generation will spawn Beta support ships and satellites instead of supports and satellites without a Spawning hull.[/color][/i]
+
+	[i][color=#aaa]If the flagship has multiple Spawning hulls applied, it will spawn support ships with any matching hulls.[/color][/i]
+>>
+GAMMA: Gamma
+GAMMA_DESC: <<
+	Generate Gamma local defense.
+
+	[i][color=#aaa]Flagships and stations with a Gamma hull and local defense generation will spawn Gamma support ships and satellites instead of supports and satellites without a Spawning hull.[/color][/i]
+
+	[i][color=#aaa]If the flagship has multiple Spawning hulls applied, it will spawn support ships with any matching hulls.[/color][/i]
+>>
+OMEGA: Omega
+OMEGA_DESC: <<
+	Generate Omega local defense only.
+
+	[i][color=#aaa]Omega support ships and satellites will only spawn at planets[/color][/i]
+>>
+ALPHA_DESC_SUPPORT: <<
+	Spawn at Alpha local defense.
+
+	[i][color=#aaa]Alpha support ships and satellites will only spawn at flagships and stations with an Alpha hull.[/color][/i]
+>>
+BETA_DESC_SUPPORT: <<
+	Spawn at Beta local defense.
+
+	[i][color=#aaa]Beta support ships and satellites will only spawn at flagships and stations with a Beta hull.[/color][/i]
+>>
+GAMMA_DESC_SUPPORT: <<
+	Spawn at Gamma local defense.
+
+	[i][color=#aaa]Gamma support ships and satellites will only spawn at flagships and stations with a Gamma hull.[/color][/i]
+>>
+OMEGA_DESC_SUPPORT: <<
+	Spawn at planets.
+
+	[i][color=#aaa]Omega support ships and satellites will only spawn at planets.[/color][/i]
+>>

@@ -74,6 +74,11 @@ tidy class Order {
 		return true;
 	}
 
+	// Extra info needed about orders on client
+	int getCargoId() { return -1; }
+	bool getIsPickup() { return false; }
+	bool getIsDropoff() { return false; }
+
 	void writeDesc(const Object& obj, Message& msg) {
 		msg << uint(type);
 
@@ -85,6 +90,10 @@ tidy class Order {
 		else {
 			msg.write0();
 		}
+
+		msg << getCargoId();
+		msg << getIsPickup();
+		msg << getIsDropoff();
 	}
 
 	void load(SaveFile& msg) {
@@ -94,4 +103,6 @@ tidy class Order {
 		uint8 tp = type;
 		msg << tp;
 	}
+
+	void resetForAnotherLoop() {}
 };

@@ -29,7 +29,7 @@ tidy class LoopOrder : Order {
 	}
 
 	void updateLooping(Object& obj, bool isLoop) {
-		// TODO obj.setLooping(isLoop);
+		obj.setLooping(isLoop);
 	}
 
 	bool cancel(Object& obj) override {

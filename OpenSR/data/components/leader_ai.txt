@@ -5,7 +5,7 @@ local:
 	GroupData@[] getSupportGroups() const;
 	safe uint get_supportCount();
 	Object@ get_supportShip(uint index);
-	
+
 	safe double getFleetHP() const;
 	safe double getFleetDPS() const;
 	safe double getFleetStrength() const;
@@ -25,6 +25,10 @@ local:
 restricted local:
 	safe bool get_hasOrders();
 	bool hasOrder(uint type, bool checkQueued = false);
+	bool hasCargoOrder(int cargoId, bool checkQueued = false);
+	bool hasCargoPickupOrder(int cargoId, bool checkQueued = false);
+	bool hasAnyCargoDropoffOrder(bool checkQueued = false);
+	bool hasAnyCargoPickupOrder(bool checkQueued = false);
 	uint get_orderCount();
 	string get_orderName(uint num);
 	uint get_orderType(uint num) const;
@@ -44,6 +48,8 @@ restricted local:
 	safe bool get_autoBuySupports() const;
 	safe bool get_autoFillSupports() const;
 	safe bool get_allowFillFrom() const;
+	safe bool get_autoBuildSupports() const;
+	safe bool isLoopingOrders() const;
 
 restricted remote:
 	void addGotoOrder(Object& target, bool append = false);
@@ -64,15 +70,21 @@ restricted remote:
 	void addOddityGateOrder(Oddity& target, bool append = false);
 	void addSlipstreamOrder(vec3d target, bool append = false);
 	void addAutoExploreOrder(bool useFTL, bool append = false);
+	void addCargoOrder(Object& target, int cargoId, double quantity, bool pickup, bool append = false);
+	void addAutoMineOrder(Object& target, bool append = false);
+	void addAutoSupplyOrder(Object& source, bool append = false);
 	void addChaseOrder(Object& target, bool append = false);
+	void addConsumePlanetOrder(Object& target, bool append = false);
+	void addLoopOrder(bool append = false, bool isLoop = true);
+	void setLooping(bool isLoop = true);
 
 	void addSecondaryToSlipstream(Object& other);
 	void addWaitOrder(Object@ waitingFor = null, bool append = false, bool moveTo = false);
 	void moveAfterWait(vec3d position, Object@ waitingFor = null);
-	
+
 	void clearOrders();
 	void clearTopOrder();
-	
+
 	void insertMoveOrder(vec3d target, uint index);
 	void insertHyperdriveOrder(vec3d target, uint index);
 	void insertJumpdriveOrder(vec3d target, uint index);
@@ -94,6 +106,7 @@ restricted remote:
 	void set_autoBuySupports(bool value);
 	void set_autoFillSupports(bool value);
 	void set_allowFillFrom(bool value);
+	void set_autoBuildSupports(bool value);
 
 	void addExperience(double amount);
 	void resetLevelExperience(bool resetLevels = false);
@@ -105,7 +118,7 @@ server:
 	safe uint get_SupplyGhost() const;
 	safe uint get_SupplyOrdered() const;
 	safe uint get_SupplySatellite() const;
-	
+
 	safe bool get_hasOrderedSupports() const;
 	safe uint get_firstOrderType() const;
 
@@ -136,7 +149,7 @@ server:
 	safe double getEngagementRange();
 	Object@ getAttackTarget();
 	double getAttackDistance();
-	
+
 	void idleAllSupports();
 
 	void teleportTo(vec3d position, bool movementPart = false);
@@ -151,9 +164,9 @@ server:
 
 	void setFleetEffectiveness(float value);
 	void modFleetEffectiveness(float value);
-	
+
 	double get_slowestSupportAccel() const;
-	
+
 	void set_engageRange(double radius);
 
 	safe bool get_freeRaiding();

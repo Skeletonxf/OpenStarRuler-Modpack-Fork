@@ -28,6 +28,8 @@ tidy class LeaderAI : Component_LeaderAI {
 	bool autoBuy = false;
 	bool AllowFillFrom = false;
 	bool allowSatellites = false;
+	bool autoBuild = true;
+	bool isLooping = false;
 
 	AutoMode autoMode = AM_AreaBound;
 	EngagementBehaviour engageBehave = EB_CloseIn;
@@ -193,6 +195,54 @@ tidy class LeaderAI : Component_LeaderAI {
 			return orders[0].type == type;
 		for(int i = orders.length - 1; i >= 0; --i) {
 			if(orders[i].type == type)
+				return true;
+		}
+		return false;
+	}
+
+	bool hasCargoOrder(int cargoId, bool checkQueued = false) {
+		if(orders.length == 0)
+			return false;
+		if(!checkQueued)
+			return orders[0].type == OT_Cargo && orders[0].cargoId == cargoId;
+		for(int i = orders.length - 1; i >= 0; --i) {
+			if(orders[i].type == OT_Cargo && orders[i].cargoId == cargoId)
+				return true;
+		}
+		return false;
+	}
+
+	bool hasCargoPickupOrder(int cargoId, bool checkQueued = false) {
+		if(orders.length == 0)
+			return false;
+		if(!checkQueued)
+			return orders[0].type == OT_Cargo && orders[0].cargoId == cargoId && orders[0].isPickup;
+		for(int i = orders.length - 1; i >= 0; --i) {
+			if(orders[i].type == OT_Cargo && orders[i].cargoId == cargoId && orders[i].isPickup)
+				return true;
+		}
+		return false;
+	}
+
+	bool hasAnyCargoDropoffOrder(bool checkQueued = false) {
+		if(orders.length == 0)
+			return false;
+		if(!checkQueued)
+			return orders[0].type == OT_Cargo && orders[0].isDropoff;
+		for(int i = orders.length - 1; i >= 0; --i) {
+			if(orders[i].type == OT_Cargo && orders[i].isDropoff)
+				return true;
+		}
+		return false;
+	}
+
+	bool hasAnyCargoPickupOrder(bool checkQueued = false) {
+		if(orders.length == 0)
+			return false;
+		if(!checkQueued)
+			return orders[0].type == OT_Cargo && orders[0].isPickup;
+		for(int i = orders.length - 1; i >= 0; --i) {
+			if(orders[i].type == OT_Cargo && orders[i].isPickup)
 				return true;
 		}
 		return false;
@@ -465,6 +515,8 @@ tidy class LeaderAI : Component_LeaderAI {
 		engageType = EngagementRange(msg.readSmall());
 		engageBehave = EngagementBehaviour(msg.readSmall());
 		msg >> autoFill >> autoBuy >> AllowFillFrom;
+		msg >> isLooping;
+		msg >> autoBuild;
 	}
 
 	bool get_autoBuySupports() {
@@ -481,6 +533,14 @@ tidy class LeaderAI : Component_LeaderAI {
 
 	void set_autoFillSupports(bool value) {
 		autoFill = value;
+	}
+
+	bool get_autoBuildSupports() {
+		return autoBuild;
+	}
+
+	bool isLoopingOrders() {
+		return isLooping;
 	}
 
 	bool get_allowFillFrom() {
